@@ -1,21 +1,15 @@
-% function [ cFcastPoint, cFcastDraws, cFcastPointTbl, varargout ] = conditionalForecast( Bet , A0inv , k , p , yy , xx , hFcst , conditions, nDraws, varargin )
 function [ cFcastPoint, cFcastDraws, cFcastPointTbl, varargout ] = conditionalForecast( Bet , A0inv , k , p , yy , xx , hFcst , conditions, nDraws, options )
 %CONDITIONALFORECAST Obtain conditional forecasts from a Structural VAR,
-%   new implementation with additional functionality (type-4 and type-5
-%   conditions) and changed behaviour (type-3 conditions); implementation
-%   significantly changed, previous code: conditionalDensityForecast;
-%   conditionalForecastUnified
-%
 %   [ cFcastPoint, cFcastDraws, cFcastPointTbl [, value of restricted variables in conditional forecast] ] = conditionalForecast( Bet , A0inv , k , p , yy , xx , hFcst , conditions, nDraws )
 %
 %   Code based on
 %   (*) Camba-Mendez, 2012, Conditional Forecasts on SVAR models using
 %   the Kalman filter, Economics Letters, and
-%   (*) Mokinski / Roth, 2023, Conditional forecasts on log-linear SVAR
-%   models with conditions on annual growth rates
+%   (*) Mokinski / Roth, 2025, Forecasting with Log-Linear (S)VAR Models:
+%   Incorporating Annual Growth Rate Conditions
 %
 %   Underlying VAR:
-%   yt = nu0 +         B1 yt-1 + ... + Bp yt-p + A0inv et,
+%   yt = nu0 + B1 yt-1 + ... + Bp yt-p + A0inv et,
 %   where yt, its lags, and et are kx1 vectors
 %
 %   INPUTS (unless implied by above equation):
@@ -44,22 +38,29 @@ function [ cFcastPoint, cFcastDraws, cFcastPointTbl, varargout ] = conditionalFo
 %       where below for the ease of exposition we abbreviate "variable"
 %       with "j"
 %
+% vvvvvvvvvv how to find the correct "type? vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+%
+%  >>>>>>>> [simple condition on variables' single-period values]
 %           type-1 condition demands that yT+h0(j) = ... = yT+h1(j) = value,
 %           where (j) denotes the j-th element; and
 %
+%  >>>>>>>> [simple condition on shocks' single-period values]
 %           type-2 condition demands that eT+h0(j) = ... = eT+h1(j) = value,
 %
+%  >>>>>>>> [condition on multiple-period (e.g. annual) average (or sum) if variables are in levels]
+%  >>>>>>>> [condition on multiple-period growth rate if variables are in log-first-differnces]
 %           type-3 condition demands that the average of the observables
 %               1/n  * ( yT+h0(j) + ... + yT+h1(j) ) = value
 %               (*) where n = h1 - h0 + 1
 %               (*) type-3 can also handle conditions zT+h1(j)/zT+h0(j)-1 = g 
 %               when zt(j) enters the VAR in first differences of logs,
-%               i.e. yt(j) = d.ln(zt(j)):
+%               i.e. yt(j) = d.ln(zt(j)) = ln(zt(j)-ln(zt-1(j))):
 %               ==> zT+h1(j)/zT+h0(j)-1 = g
 %               <=> ln(zT+h1(j))-ln(zT+h0(j)) = ln(1+g)
 %               <=> d.ln(zT+h1(j)) + ... + d.ln(zT+h0+1(j)) = ln(1+g)
 %               <=> 1/(h1-h0) * [d.ln(zT+h1(j)) + ... + d.ln(zT+h0+1(j))] = 1/(h1-h0+1) * ln(1+g)
 %
+%  >>>>>>>> [condition on average (e.g. annual) change]
 %           type-4 condition demands that
 %               1/n * { (yT+h0(j) + ... + yT+h1(j)) - (yT+h0-n(j) + ... + yT+h1-n(j)) } = value
 %               (*) where n = h1 - h0 + 1
@@ -73,6 +74,7 @@ function [ cFcastPoint, cFcastDraws, cFcastPointTbl, varargout ] = conditionalFo
 %               to T+4 shall be by 0.05 higher than the average
 %               unemployment rate in the periods T-3 to T
 %
+%  >>>>>>>> [condition on average (e.g. annual) change if variables are in first-differnces]
 %           type = 5 condition demands same as type-4 condition but with
 %               the  difference that the VAR is specified in
 %               first differences, i.e. condition is
@@ -80,12 +82,13 @@ function [ cFcastPoint, cFcastDraws, cFcastPointTbl, varargout ] = conditionalFo
 %               and VAR is specified as
 %               d.yt = nu0 + B1 d.yt-1 + ... + Bp d.yt-p + A0inv et,
 %               where d.yt = yt - yt-1
-%               (*) where n = h1 - h0 + 1, and
-%               (*) example continued: {5 variable 1 4 0.05} would impose
+%               (*) where n = h1 - h0 + 1
+%               (*) example: {5 variable 1 4 0.05} would impose
 %               the same condition as in the previous example, but in
 %               case of a VAR where the unemployment rate enters  the VAR
 %               in first differences (instead of levels)
 %
+%  >>>>>>>> [condition on average growth rate if variables are in log-levels]
 %           type-6 condition demands that
 %               { (zT+h0(j) + ... + zT+h1(j)) / (zT+h0-n(j) + ... + zT+h1-n(j)) } - 1 = value
 %               (*) where n = h1 - h0 + 1, and
@@ -96,14 +99,16 @@ function [ cFcastPoint, cFcastDraws, cFcastPointTbl, varargout ] = conditionalFo
 %               be 5 percent higher than the average level in the periods
 %               T-3 to T
 %
+%  >>>>>>>> [condition on average growth rate if variables are in log-levels]
 %           type = 7 conditions demands same as type-6 condition but 
 %               (*) where zt enters the VAR in log first differences, i.e.
 %               yt(j) = ln(zt) -  ln(zt-1)
-%               (*) example continued: {7 j 1 4 0.05} would impose the same
+%               (*) example: {7 j 1 4 0.05} would impose the same
 %               condition as in the previous example, but in case of a VAR
 %               where real GDP enters in first differences of logs (instead of
 %               log levels)
 %
+%  >>>>>>>> [condition on multiple-period (e.g. annual) average (or sum) if variables are in log-levels]
 %           type-8 condition demands the same as type-3 conditions, i.e.
 %               1/n  * ( zT+h0(j) + ... + zT+h1(j) ) = value
 %               (*) BUT where zt enters the VAR in log levels, i.e. yt(j) =
@@ -114,12 +119,15 @@ function [ cFcastPoint, cFcastDraws, cFcastPointTbl, varargout ] = conditionalFo
 %               be 50 
 %               (*) where n = h1 - h0 + 1     
 %
+%  >>>>>>>> [condition on multiple-period change if variables are in levels]
 %           type-9 condition demands that yT+h1(j) - yT+h0(j) = value,
 %               where (j) denotes the j-th element.
 %               (*) Example: suppose yt(j) is the unemployment rate
 %               measured in %, then the condition {9 j 0 4 1.2} demands
 %               that the unemployment rate increases by 1.2 percentage
 %               points between T and T+4 
+%
+% ^^^^^^^^^^ how to find the correct "type? ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 %
 %   > nDraws = number of draws from conditional predictive density        
 %
