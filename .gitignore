@@ -1,0 +1,45 @@
+# Dies ist eine Vorlage für eine .gitignore-Datei, welche dazu verwendet wird, bestimmte Dateien, Dateitypen
+# oder Verzeichnisse von der Versionierung durch Git auszuschließen.  
+
+########## Ignoriere alles ##########
+
+*
+
+# NEGATIVLISTE (was nicht ignoriert wird)##
+
+########## aber nicht die Unterordner ##########
+
+!*/
+
+########## nicht folgende Git-Dateitypen: ##########
+
+!*.gitattributes
+!*.gitignore
+!*.git
+!*.gitkeep
+
+########## nicht nachstehende Dateiformate: ##########
+
+# Textdateien
+
+!*.md
+!*.txt
+!*.docx
+!*.pdf
+!*.html
+
+# Codedateien
+
+!*.m
+!*.do
+!*.ado
+!*.R
+!*.Rproj
+!*.py
+!*.smcl
+
+# Außerdem
+
+!*.xlsx
+!*.mat
+
